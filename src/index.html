@@ -1,0 +1,21 @@
+<!doctype>
+<html>
+    <head>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css" integrity="sha256-l85OmPOjvil/SOvVt3HnSSjzF1TUMyT9eV0c2BzEGzU=" crossorigin="anonymous" />
+        <style>
+          html, body {
+            height: 100%;
+            widht: 100%;
+          }
+
+          #map {
+            height: 100%;
+            widht: 100%;
+          }
+        </style>
+        <script type="module" src="./mobility-map.js"></script>
+    </head>
+    <body>
+        <mobility-map endpoint="http://0.0.0.0:8090" lines="^(3|5|8|9){1} BZ$"></mobility-map>
+    </body>
+</html>

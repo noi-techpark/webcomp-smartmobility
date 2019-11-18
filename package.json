@@ -1,0 +1,25 @@
+{
+  "dependencies": {
+    "@openlayers-elements/core": "^0.2.0-beta.0",
+    "@openlayers-elements/maps": "^0.2.0-beta.0",
+    "@polymer/paper-checkbox": "^3.1.0",
+    "@polymer/paper-dialog": "^3.0.1",
+    "lit-element": "^2.2.0",
+    "lodash": "^4.17.15"
+  },
+  "devDependencies": {
+    "@open-wc/building-webpack": "^2.3.1",
+    "@open-wc/polyfills-loader": "^0.3.2",
+    "css-loader": "^3.2.0",
+    "svg-inline-loader": "^0.8.0",
+    "url-loader": "^2.3.0",
+    "webpack": "^4.35.3",
+    "webpack-cli": "^3.3.6",
+    "webpack-dev-server": "^3.7.2",
+    "webpack-merge": "^4.2.1"
+  },
+  "scripts": {
+    "build": "webpack --mode production --config webpack.config.js",
+    "watch": "webpack-dev-server --mode development --config webpack.config.js"
+  }
+}
