@@ -4,6 +4,7 @@ import '@polymer/paper-checkbox/paper-checkbox.js';
 import '@polymer/paper-dialog/paper-dialog.js';
 
 import _ from 'lodash';
+import moment from 'moment';
 import OLMap from 'ol/Map';
 import OLView from 'ol/View';
 import OLExtent from 'ol/interaction/Extent';
@@ -29,6 +30,7 @@ import assets__close_icon from './assets/close.svg';
 import assets__fit_icon from './assets/fit.svg';
 import assets__layers_icon from './assets/layers.svg';
 import assets__settings_icon from './assets/settings.svg';
+import assets__stop_icon from './assets/stop.svg';
 import assets__track_icon from './assets/track.svg';
 import assets__zoom_in_icon from './assets/zoom-in.svg';
 import assets__zoom_out_icon from './assets/zoom-out.svg';
@@ -140,22 +142,27 @@ class MobilityMap extends LitElement {
         }
 
         #dialog .dialog-header {
+          display: flex;
           margin: 0;
-          overflow: auto;
           padding: 16px 16px 8px 24px;
         }
 
+        #dialog .dialog-header #dialog-icon {
+          height: 32px;
+          margin: 8px 0 0 0;
+          width: 32px;
+        }
+
         #dialog .dialog-header h2 {
+          flex: 1;
           float: left;
           font-size: 1.8em;
-          line-height: 48px;
-          margin: 0 48px 0 0;
+          line-height: 1.2em;
+          margin: 8px 16px 0 16px;
         }
 
         #dialog .dialog-header #close-dialog {
           box-sizing: border-box;
-          display: block;
-          float: right;
           height: 48px;
           margin: 0;
           padding: 0;
@@ -220,7 +227,74 @@ class MobilityMap extends LitElement {
         }
 
         #dialog table {
+          border: 0;
+          border-collapse: collapse;
           width: 100%;
+        }
+
+        #dialog .stop-details .placeholder {
+          display: none;
+          font-size: 1.2em;
+          padding: 16px 0;
+        }
+
+        #dialog .stop-details.is-empty .placeholder {
+          display: block;
+        }
+
+        #dialog .stop-details.is-empty table {
+          display: none;
+        }
+
+        #dialog .stop-details table thead th {
+          border-bottom: 1px solid #666666;
+        }
+
+        #dialog .stop-details table tr th {
+          padding: 8px 2px;
+        }
+
+        #dialog .stop-details table tr td {
+          padding: 2px;
+        }
+
+        #dialog .stop-details table tbody tr:first-child td {
+          padding-top: 10px;
+        }
+
+        #dialog .stop-details table tr th {
+          color: #666666;
+          font-size: 1.5em;
+        }
+
+        #dialog .stop-details table tr .contains-route {
+          text-align: left;
+        }
+
+        #dialog .stop-details table tr .contains-time {
+          text-align: center;
+        }
+
+        #dialog .stop-details table tr td svg {
+          display: inline-block;
+          vertical-align: middle;
+          width: 24px;
+        }
+
+        #dialog .stop-details table tr td .route {
+          display: inline-block;
+          font-size: 1.5em;
+          margin: 0 0 0 8px;
+          vertical-align: middle;
+        }
+
+        #dialog .stop-details table tr td .time {
+          font-size: 1.5em;
+        }
+
+        #dialog .stop-details .last-updated {
+          font-size: 1em;
+          padding: 16px 0;
         }
       </style>
       <div id="contains-map">
@@ -257,10 +331,11 @@ class MobilityMap extends LitElement {
 
         <paper-dialog id="dialog">
           <div class="dialog-header">
+            <div id="dialog-icon"></div>
+            <h2 id="dialog-title"></h2>
             <a href="#" id="close-dialog">
               <img src="data:image/svg+xml;base64,${btoa(assets__close_icon)}"/>
             </a>
-            <h2 id="dialog-title"></h2>
           </div>
           <div id="dialog-contents"></div>
         </paper-dialog>
@@ -444,6 +519,11 @@ class MobilityMap extends LitElement {
             var vehicleColor = '#' + (feature.properties.hexcolor || '000000')
 
             var vehicleFeature = new OLFeature({
+              properties: {
+                type: 'Vehicle',
+                id: feature.properties.frt_fid,
+                route: route.id
+              },
               geometry: new OLPoint(OLProjectionFromLonLat(feature.geometry.coordinates))
             })
 
@@ -460,13 +540,130 @@ class MobilityMap extends LitElement {
       })
   }
 
+  formatTime(formattedTime) {
+    var matches = formattedTime.match(/([0-9]{2}):([0-9]{2}):([0-9]{2})/)
+    return matches[1] + ':' + matches[2]
+  }
+
+  showStopDetails(stopID) {
+    var self = this
+
+    let refreshDetails = (callback) => {
+      var now = new Date()
+
+      fetch(self.endpoint + '/v2/stop-times/stop/' + stopID + '/after/' + moment().format('HH:mm:ss'))
+        .then((response) => response.json())
+        .then((result) => {
+          var stopTimes = _.sortBy(result, 'arrivalTime')
+
+          stopTimes = _.filter(stopTimes, (stopTime) => {
+            return _.indexOf(self.services.map((service) => service.id), stopTime.serviceId) !== -1
+          })
+
+          stopTimes = _.slice(stopTimes, 0, 10)
+
+          if (stopTimes.length === 0) {
+            self.dialogContents.querySelector('.stop-details').classList.add('is-empty')
+            self.dialogContents.querySelector('.last-updated').textContent = 'Last updated on ' + moment().format('DD/MM/YYYY HH:mm:ss')
+
+            if (!!callback) callback()
+          } else {
+            Promise.all(stopTimes.map((stopTime) => {
+              return fetch(self.endpoint + '/v2/trips/' + stopTime.tripId)
+            }))
+              .then((responses) => Promise.all(responses.map((response) => response.json())))
+              .then((trips) => {
+                var contents = []
+
+                for (var i = 0; i < stopTimes.length; i++) {
+                  var stopTime = stopTimes[i]
+                  var trip = trips[i]
+
+                  contents.push('<tr>')
+
+                  contents.push('<td class="contains-route">')
+                  contents.push(assets__bus_icon.replace(/#000000/g, trip.route.color))
+                  contents.push('<span class="route">' + trip.route.shortName + '</span>')
+                  contents.push('</td>')
+
+                  contents.push('<td class="contains-time">')
+                  contents.push('<span class="time">' + self.formatTime(stopTime.departureTime) + '</span>')
+                  contents.push('</td>')
+
+                  contents.push('</tr>')
+                }
+
+                self.dialogContents.querySelector('.stop-details').classList.remove('is-empty')
+                self.dialogContents.querySelector('table tbody').innerHTML = contents.join('')
+                self.dialogContents.querySelector('.last-updated').textContent = 'Last updated on ' + moment().format('DD/MM/YYYY HH:mm:ss')
+
+                if (!!callback) callback()
+              })
+          }
+        })
+    }
+
+    fetch(self.endpoint + '/v2/stops/' + stopID)
+      .then((response) => response.json())
+      .then((stop) => {
+        var contents = []
+
+        contents.push('<div class="stop-details">')
+
+        contents.push('<div class="placeholder">There are currently no upcoming stops at this location.</div>')
+
+        contents.push('<table>')
+
+        contents.push('<thead>')
+        contents.push('<tr>')
+        contents.push('<th class="contains-route">LINE</th>')
+        contents.push('<th class="contains-time">TIME</th>')
+        contents.push('</tr>')
+        contents.push('</thead>')
+        contents.push('<tbody>')
+        contents.push('</tbody>')
+        contents.push('</table>')
+
+        contents.push('<div class="last-updated"></div>')
+
+        contents.push('</div>')
+
+        var refreshInterval = setInterval(refreshDetails, 20000)
+
+        setTimeout(refreshDetails, 60 - (new Date()).getSeconds())
+
+        self.dialogIcon.innerHTML = assets__stop_icon
+        self.dialogTitle.textContent = stop.name
+        self.dialogContents.innerHTML = contents.join('')
+        self.dialogCloseCallback = () => {
+          clearInterval(refreshInterval)
+        }
+
+        refreshDetails(() => {
+          self.dialog.opened = true
+        })
+      })
+  }
+
   async firstUpdated() {
     let self = this
     let root = self.shadowRoot
 
     self.dialog = root.getElementById('dialog')
+    self.dialog.noCancelOnOutsideClick = true
+
+    self.dialogIcon = root.getElementById('dialog-icon')
     self.dialogTitle = root.getElementById('dialog-title')
     self.dialogContents = root.getElementById('dialog-contents')
+    self.dialogCloseCallback = null
+
+    self.dialog.addEventListener('opened-changed', (e) => {
+      if (!self.dialog.opened && !!self.dialogCloseCallback) {
+        self.dialogCloseCallback()
+      }
+
+      self.dialogCloseCallback = null
+    })
 
     self.backdropLayers = {
       standard: new OLTileLayer({
@@ -561,8 +758,75 @@ class MobilityMap extends LitElement {
           zoom: 16
         })
       } else {
-        self.currentPositionFeature.setGeometry(new OLPoint(position))
+        self.currentPositionFeature.getGeometry().setCoordinates(position)
       }
+    })
+
+    self.select = new OLSelect({
+      condition: OLClickCondition,
+      style: (feature) => {
+        var config = feature.getProperties()
+
+        if (config.properties.type === 'Stop') {
+          return new OLStyle({
+            image: new OLCircleStyle({
+              radius: 6,
+              fill: new OLFill({color: '#ffffff'}),
+              stroke: new OLStroke({color: '#000000', width: 2})
+            })
+          })
+        }
+
+        if (config.properties.type === 'Vehicle') {
+          var vehicleColor = (self.routes[config.properties.routeID].color || '#000000')
+
+          return new OLStyle({
+            image: new OLIcon({
+              scale: 0.8,
+              src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(assets__bus_icon.replace(/#000000/g, vehicleColor))
+            })
+          })
+        }
+
+        return null
+      }
+    })
+
+    self.select.on('select', (e) => {
+      self.select.getFeatures().clear()
+
+      if (!!e.selected && e.selected.length === 1) {
+        var values = e.selected[0].getProperties()
+
+        if (!!values.properties && values.properties.type === 'Stop') {
+          self.showStopDetails(values.properties.id)
+        }
+
+        if (!!values.properties && values.properties.type === 'Vehicle') {
+          console.log('TODO: Show vehicle details for %s (%s)', values.properties.id, values.properties.route)
+        }
+      }
+    })
+
+    self.map.addInteraction(self.select)
+
+    self.map.on('pointermove', (e) => {
+      var pixel = self.map.getEventPixel(e.originalEvent)
+
+      var features = self.map.getFeaturesAtPixel(pixel)
+
+      if (!features) {
+        features = []
+      }
+
+      features = features.filter((feature) => {
+        return !!feature.getProperties().properties && (
+          feature.getProperties().properties.type === 'Stop' ||
+          feature.getProperties().properties.type === 'Vehicle'
+        )
+      })
+
+      self.map.getViewport().style.cursor = features.length > 0 ? 'pointer' : ''
     })
 
     root.getElementById('close-dialog').onclick = () => {
