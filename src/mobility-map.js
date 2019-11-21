@@ -46,6 +46,7 @@ class MobilityMap extends LitElement {
     this.services = []
     this.routes = {}
     this.enabledRoutes = {}
+    this.vehicles = {}
   }
 
   static get properties() {
@@ -232,67 +233,87 @@ class MobilityMap extends LitElement {
           width: 100%;
         }
 
-        #dialog .stop-details .placeholder {
+        #dialog .stop-details .placeholder,
+        #dialog .vehicle-details .placeholder {
           display: none;
           font-size: 1.2em;
           padding: 16px 0;
         }
 
-        #dialog .stop-details.is-empty .placeholder {
+        #dialog .stop-details.is-empty .placeholder,
+        #dialog .vehicle-details.is-empty .placeholder {
           display: block;
         }
 
-        #dialog .stop-details.is-empty table {
+        #dialog .stop-details.is-empty table,
+        #dialog .vehicle-details.is-empty table {
           display: none;
         }
 
-        #dialog .stop-details table thead th {
+        #dialog .stop-details table thead th,
+        #dialog .vehicle-details table thead th {
           border-bottom: 1px solid #666666;
         }
 
-        #dialog .stop-details table tr th {
+        #dialog .stop-details table tr th,
+        #dialog .vehicle-details table tr th {
           padding: 8px 2px;
         }
 
-        #dialog .stop-details table tr td {
-          padding: 2px;
+        #dialog .stop-details table tr td,
+        #dialog .vehicle-details table tr td {
+          padding: 8px 0;
         }
 
-        #dialog .stop-details table tbody tr:first-child td {
-          padding-top: 10px;
+        #dialog .stop-details table tbody tr:first-child td,
+        #dialog .vehicle-details table tbody tr:first-child td {
+          padding-top: 16px;
         }
 
-        #dialog .stop-details table tr th {
+        #dialog .stop-details table tr th,
+        #dialog .vehicle-details table tr th {
           color: #666666;
           font-size: 1.5em;
         }
 
-        #dialog .stop-details table tr .contains-route {
+        #dialog .stop-details table tr .contains-route,
+        #dialog .vehicle-details table tr .contains-stop {
           text-align: left;
         }
 
-        #dialog .stop-details table tr .contains-time {
-          text-align: center;
+        #dialog .stop-details table tr td.contains-route,
+        #dialog .vehicle-details table tr td.contains-stop {
+          display: flex;
+          align-items: center;
         }
 
-        #dialog .stop-details table tr td svg {
+        #dialog .stop-details table tr .contains-time,
+        #dialog .vehicle-details table tr .contains-time {
+          text-align: center;
+          width: 96px;
+        }
+
+        #dialog .stop-details table tr td svg,
+        #dialog .vehicle-details table tr td svg {
           display: inline-block;
-          vertical-align: middle;
           width: 24px;
         }
 
-        #dialog .stop-details table tr td .route {
+        #dialog .stop-details table tr td .route,
+        #dialog .vehicle-details table tr td .stop {
           display: inline-block;
+          flex: 1;
           font-size: 1.5em;
-          margin: 0 0 0 8px;
-          vertical-align: middle;
+          margin: 0 16px;
         }
 
-        #dialog .stop-details table tr td .time {
+        #dialog .stop-details table tr td .time,
+        #dialog .vehicle-details table tr td .time {
           font-size: 1.5em;
         }
 
-        #dialog .stop-details .last-updated {
+        #dialog .stop-details .last-updated,
+        #dialog .vehicle-details .last-updated {
           font-size: 1em;
           padding: 16px 0;
         }
@@ -508,33 +529,54 @@ class MobilityMap extends LitElement {
     fetch(self.endpoint + '/geojson/realtime')
       .then((response) => response.json())
       .then((realtime) => {
-        _.each(self.routes, (route) => {
-          route.layers.realtime.getSource().clear()
-        })
+        var processed = {}
 
         realtime.features.forEach((feature) => {
           if (!!self.routes[feature.properties.li_nr]) {
             var route = self.routes[feature.properties.li_nr]
+            var tripID = feature.properties.frt_fid
 
-            var vehicleColor = '#' + (feature.properties.hexcolor || '000000')
+            var point = new OLPoint(OLProjectionFromLonLat(feature.geometry.coordinates))
 
-            var vehicleFeature = new OLFeature({
-              properties: {
-                type: 'Vehicle',
-                id: feature.properties.frt_fid,
-                route: route.id
-              },
-              geometry: new OLPoint(OLProjectionFromLonLat(feature.geometry.coordinates))
-            })
+            if (!_.has(self.vehicles, tripID)) {
+              var vehicleColor = '#' + (feature.properties.hexcolor || '000000')
 
-            vehicleFeature.setStyle(new OLStyle({
-              image: new OLIcon({
-                scale: 0.8,
-                src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(assets__bus_icon.replace(/#000000/g, vehicleColor))
+              var vehicleFeature = new OLFeature({
+                properties: {
+                  type: 'Vehicle',
+                  id: feature.properties.frt_fid
+                },
+                geometry: new OLPoint(OLProjectionFromLonLat(feature.geometry.coordinates))
               })
-            }))
 
-            route.layers.realtime.getSource().addFeature(vehicleFeature)
+              vehicleFeature.setStyle(new OLStyle({
+                image: new OLIcon({
+                  scale: 0.8,
+                  src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(assets__bus_icon.replace(/#000000/g, vehicleColor))
+                })
+              }))
+
+              route.layers.realtime.getSource().addFeature(vehicleFeature)
+
+              self.vehicles[tripID] = {
+                routeID: route.id,
+                point: point,
+                source: route.layers.realtime.getSource(),
+                feature: vehicleFeature
+              }
+            } else {
+              self.vehicles[tripID].point = point
+              self.vehicles[tripID].feature.setGeometry(point)
+            }
+
+            processed[tripID] = true
+          }
+        })
+
+        _.each(self.vehicles, (vehicle, tripID) => {
+          if (!_.has(processed, tripID)) {
+            self.vehicles[tripID].source.removeFeature(self.vehicles[tripID].feature)
+            delete self.vehicles[tripID]
           }
         })
       })
@@ -548,6 +590,11 @@ class MobilityMap extends LitElement {
   showStopDetails(stopID) {
     var self = this
 
+    if (!!self.dialogCloseCallback) {
+      self.dialogCloseCallback()
+      self.dialogCloseCallback = null
+    }
+
     let refreshDetails = (callback) => {
       var now = new Date()
 
@@ -560,7 +607,7 @@ class MobilityMap extends LitElement {
             return _.indexOf(self.services.map((service) => service.id), stopTime.serviceId) !== -1
           })
 
-          stopTimes = _.slice(stopTimes, 0, 10)
+          stopTimes = _.slice(stopTimes, 0, 12)
 
           if (stopTimes.length === 0) {
             self.dialogContents.querySelector('.stop-details').classList.add('is-empty')
@@ -628,13 +675,112 @@ class MobilityMap extends LitElement {
 
         contents.push('</div>')
 
-        var refreshInterval = setInterval(refreshDetails, 20000)
-
-        setTimeout(refreshDetails, 60 - (new Date()).getSeconds())
-
         self.dialogIcon.innerHTML = assets__stop_icon
         self.dialogTitle.textContent = stop.name
         self.dialogContents.innerHTML = contents.join('')
+
+        var refreshInterval = setInterval(refreshDetails, 20000)
+
+        self.dialogCloseCallback = () => {
+          clearInterval(refreshInterval)
+        }
+
+        refreshDetails(() => {
+          self.dialog.opened = true
+        })
+      })
+  }
+
+  showVehicleDetails(tripID) {
+    var self = this
+
+    if (!!self.dialogCloseCallback) {
+      self.dialogCloseCallback()
+      self.dialogCloseCallback = null
+    }
+
+    let refreshDetails = (callback) => {
+      var now = moment().seconds(0).milliseconds(0)
+
+      fetch(self.endpoint + '/v2/trips/' + tripID)
+        .then((response) => response.json())
+        .then((trip) => {
+          var stops = trip.stops
+
+          stops = _.filter(stops, (stop) => {
+            return moment(moment().format('YYYY-MM-DD') + ' ' + stop.departureTime).isSameOrAfter(now)
+          })
+
+          stops = _.slice(stops, 0, 12)
+
+          if (stops.length === 0) {
+            self.dialogContents.querySelector('.vehicle-details').classList.add('is-empty')
+
+            self.dialogContents.querySelector('.last-updated').textContent = 'Last updated on ' + moment().format('DD/MM/YYYY HH:mm:ss')
+
+            if (!!callback) callback()
+          } else {
+            var contents = []
+
+            for (var i = 0; i < stops.length; i++) {
+              var stop = stops[i]
+
+              contents.push('<tr>')
+
+              contents.push('<td class="contains-stop">')
+              contents.push(assets__stop_icon)
+              contents.push('<span class="stop">' + stop.name + '</span>')
+              contents.push('</td>')
+
+              contents.push('<td class="contains-time">')
+              contents.push('<span class="time">' + self.formatTime(stop.departureTime) + '</span>')
+              contents.push('</td>')
+
+              contents.push('</tr>')
+            }
+
+            self.dialogContents.querySelector('.vehicle-details').classList.remove('is-empty')
+            self.dialogContents.querySelector('table tbody').innerHTML = contents.join('')
+            self.dialogContents.querySelector('.last-updated').textContent = 'Last updated on ' + moment().format('DD/MM/YYYY HH:mm:ss')
+
+            if (!!callback) callback()
+          }
+        })
+    }
+
+    var vehicle = self.vehicles[tripID]
+
+    fetch(self.endpoint + '/v2/routes/' + vehicle.routeID)
+      .then((response) => response.json())
+      .then((route) => {
+        var contents = []
+
+        contents.push('<div class="vehicle-details">')
+
+        contents.push('<div class="placeholder">There are currently no upcoming stops for this vehicle.</div>')
+
+        contents.push('<table>')
+
+        contents.push('<thead>')
+        contents.push('<tr>')
+        contents.push('<th class="contains-stop">STOP</th>')
+        contents.push('<th class="contains-time">TIME</th>')
+        contents.push('</tr>')
+        contents.push('</thead>')
+        contents.push('<tbody>')
+        contents.push('</tbody>')
+        contents.push('</table>')
+
+        contents.push('<div class="last-updated"></div>')
+
+        contents.push('</div>')
+
+        self.dialogIcon.innerHTML = assets__bus_icon.replace(/#000000/g, route.color)
+        self.dialogTitle.textContent = route.shortName
+        self.dialogContents.innerHTML = contents.join('')
+
+        var refreshInterval = setInterval(refreshDetails, 5000)
+
         self.dialogCloseCallback = () => {
           clearInterval(refreshInterval)
         }
@@ -660,9 +806,8 @@ class MobilityMap extends LitElement {
     self.dialog.addEventListener('opened-changed', (e) => {
       if (!self.dialog.opened && !!self.dialogCloseCallback) {
         self.dialogCloseCallback()
+        self.dialogCloseCallback = null
       }
-
-      self.dialogCloseCallback = null
     })
 
     self.backdropLayers = {
@@ -803,7 +948,7 @@ class MobilityMap extends LitElement {
         }
 
         if (!!values.properties && values.properties.type === 'Vehicle') {
-          console.log('TODO: Show vehicle details for %s (%s)', values.properties.id, values.properties.route)
+          self.showVehicleDetails(values.properties.id)
         }
       }
     })
