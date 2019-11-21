@@ -45,8 +45,10 @@ class MobilityMap extends LitElement {
 
     this.services = []
     this.routes = {}
-    this.enabledRoutes = {}
+    this.stops = {}
     this.vehicles = {}
+
+    this.enabledRoutes = {}
   }
 
   static get properties() {
@@ -293,9 +295,18 @@ class MobilityMap extends LitElement {
           width: 96px;
         }
 
-        #dialog .stop-details table tr td svg,
-        #dialog .vehicle-details table tr td svg {
+        #dialog .stop-details table tr td .contains-icon,
+        #dialog .vehicle-details table tr td .contains-icon {
+          cursor: pointer;
           display: inline-block;
+          height: 24px;
+          width: 24px;
+        }
+
+        #dialog .stop-details table tr td .contains-icon svg,
+        #dialog .vehicle-details table tr td .contains-icon svg {
+          display: inline-block;
+          height: 24px;
           width: 24px;
         }
 
@@ -503,13 +514,24 @@ class MobilityMap extends LitElement {
 
             route.services.forEach((routeService) => {
               routeService.stops.forEach((stop) => {
-                route.layers.stops.getSource().addFeature(new OLFeature({
+                var feature = new OLFeature({
                   properties: {
                     type: 'Stop',
                     id: stop.id
                   },
                   geometry: new OLPoint(OLProjectionFromLonLat([stop.longitude, stop.latitude]))
-                }))
+                })
+
+                route.layers.stops.getSource().addFeature(feature)
+
+                if (!_.has(self.stops, stop.id)) {
+                  self.stops[stop.id] = {
+                    point: feature.getGeometry(),
+                    features: []
+                  }
+                }
+
+                self.stops[stop.id].features.push(feature)
               })
             })
 
@@ -601,7 +623,7 @@ class MobilityMap extends LitElement {
       fetch(self.endpoint + '/v2/stop-times/stop/' + stopID + '/after/' + moment().format('HH:mm:ss'))
         .then((response) => response.json())
         .then((result) => {
-          var stopTimes = _.sortBy(result, 'arrivalTime')
+          var stopTimes = _.sortBy(result, 'departureTime')
 
           stopTimes = _.filter(stopTimes, (stopTime) => {
             return _.indexOf(self.services.map((service) => service.id), stopTime.serviceId) !== -1
@@ -611,6 +633,7 @@ class MobilityMap extends LitElement {
 
           if (stopTimes.length === 0) {
             self.dialogContents.querySelector('.stop-details').classList.add('is-empty')
+
             self.dialogContents.querySelector('.last-updated').textContent = 'Last updated on ' + moment().format('DD/MM/YYYY HH:mm:ss')
 
             if (!!callback) callback()
@@ -629,7 +652,9 @@ class MobilityMap extends LitElement {
                   contents.push('<tr>')
 
                   contents.push('<td class="contains-route">')
+                  contents.push('<a href="#" class="contains-icon" data-trip="' + trip.id + '">')
                   contents.push(assets__bus_icon.replace(/#000000/g, trip.route.color))
+                  contents.push('</a>')
                   contents.push('<span class="route">' + trip.route.shortName + '</span>')
                   contents.push('</td>')
 
@@ -641,7 +666,19 @@ class MobilityMap extends LitElement {
                 }
 
                 self.dialogContents.querySelector('.stop-details').classList.remove('is-empty')
+
                 self.dialogContents.querySelector('table tbody').innerHTML = contents.join('')
+
+                var vehicleLinks = self.dialogContents.querySelectorAll('table tbody td.contains-route a')
+                for (var i = 0; i < vehicleLinks.length; i++) {
+                  let link = vehicleLinks[i]
+
+                  link.onclick = (e) => {
+                    self.highlightVehicle(link.getAttribute('data-trip'))
+                    return false
+                  }
+                }
+
                 self.dialogContents.querySelector('.last-updated').textContent = 'Last updated on ' + moment().format('DD/MM/YYYY HH:mm:ss')
 
                 if (!!callback) callback()
@@ -728,7 +765,9 @@ class MobilityMap extends LitElement {
               contents.push('<tr>')
 
               contents.push('<td class="contains-stop">')
+              contents.push('<a href="#" class="contains-icon" data-stop="' + stop.id + '">')
               contents.push(assets__stop_icon)
+              contents.push('</a>')
               contents.push('<span class="stop">' + stop.name + '</span>')
               contents.push('</td>')
 
@@ -740,7 +779,19 @@ class MobilityMap extends LitElement {
             }
 
             self.dialogContents.querySelector('.vehicle-details').classList.remove('is-empty')
+
             self.dialogContents.querySelector('table tbody').innerHTML = contents.join('')
+
+            var stopLinks = self.dialogContents.querySelectorAll('table tbody td.contains-stop a')
+            for (var i = 0; i < stopLinks.length; i++) {
+              let link = stopLinks[i]
+
+              link.onclick = (e) => {
+                self.highlightStop(link.getAttribute('data-stop'))
+                return false
+              }
+            }
+
             self.dialogContents.querySelector('.last-updated').textContent = 'Last updated on ' + moment().format('DD/MM/YYYY HH:mm:ss')
 
             if (!!callback) callback()
@@ -789,6 +840,30 @@ class MobilityMap extends LitElement {
           self.dialog.opened = true
         })
       })
+  }
+
+  highlightStop(stopID) {
+    var self = this
+
+    if (_.has(self.stops, stopID)) {
+      self.map.getView().animate({
+        duration: 250,
+        center: self.stops[stopID].point.getCoordinates(),
+        zoom: 16
+      })
+    }
+  }
+
+  highlightVehicle(tripID) {
+    var self = this
+
+    if (_.has(self.vehicles, tripID)) {
+      self.map.getView().animate({
+        duration: 250,
+        center: self.vehicles[tripID].point.getCoordinates(),
+        zoom: 16
+      })
+    }
   }
 
   async firstUpdated() {
