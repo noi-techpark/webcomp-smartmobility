@@ -14,7 +14,8 @@ const config = merge(
       hot: false
     },
     output: {
-      path: path.resolve(__dirname, 'dist')
+      path: path.resolve(__dirname, 'dist'),
+      filename: 'smartmobility.min.js'
     },
     module: {
       rules: [

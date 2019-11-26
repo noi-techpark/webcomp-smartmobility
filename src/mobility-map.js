@@ -35,13 +35,33 @@ import assets__track_icon from './assets/track.svg';
 import assets__zoom_in_icon from './assets/zoom-in.svg';
 import assets__zoom_out_icon from './assets/zoom-out.svg';
 
-class MobilityMap extends LitElement {
+const configuration = {
+  intervals: {
+    refreshStopDetails: 20000,
+    refreshVehicleDetails: 5000,
+    refreshVehicles: 2500
+  },
+  layers: {
+    backdrops: 100,
+    paths: 200,
+    stops: 300,
+    vehicles: 400,
+    currentPosition: 500
+  },
+  zooms: {
+    revealCurrentPosition: 16,
+    highlightFeature: 16,
+    stopsThreshold: 14
+  }
+}
+
+class SmartMobilityMap extends LitElement {
 
   constructor() {
     super()
 
-    this.endpoint = 'http://0.0.0.0'
-    this.lines = '.*'
+    this.endpointBaseUrl = 'http://0.0.0.0'
+    this.routesFilter = '.*'
 
     this.services = []
     this.routes = {}
@@ -53,8 +73,8 @@ class MobilityMap extends LitElement {
 
   static get properties() {
     return {
-      endpoint: {attribute: 'endpoint', type: String},
-      lines: {attribute: 'lines', type: String},
+      endpointBaseUrl: { attribute: 'endpoint', type: String },
+      routesFilter: { attribute: 'routes', type: String },
     }
   }
 
@@ -111,14 +131,6 @@ class MobilityMap extends LitElement {
 
         #contains-map #map-bottom-controls .map-control {
           margin-top: 1em;
-        }
-
-        #contains-map #track {
-
-        }
-
-        #contains-map #track.is-active {
-
         }
 
         #contains-map #track.is-active svg path {
@@ -387,6 +399,44 @@ class MobilityMap extends LitElement {
     }
   }
 
+  getStopStyle() {
+    return new OLStyle({
+      image: new OLCircleStyle({
+        radius: 6,
+        fill: new OLFill({ color: '#ffffff' }),
+        stroke: new OLStroke({ color: '#000000', width: 2 })
+      })
+    })
+  }
+
+  getPathStyle(color) {
+    return new OLStyle({
+      stroke: new OLStroke({
+        color: color,
+        width: 5
+      })
+    })
+  }
+
+  getVehicleStyle(color) {
+    return new OLStyle({
+      image: new OLIcon({
+        scale: 0.8,
+        src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(assets__bus_icon.replace(/#000000/g, color))
+      })
+    })
+  }
+
+  getCurrentPositionStyle() {
+    return new OLStyle({
+      image: new OLCircleStyle({
+        radius: 8,
+        fill: new OLFill({ color: '#0077ff' }),
+        stroke: new OLStroke({ color: '#ffffff', width: 2 })
+      })
+    })
+  }
+
   fitMapToContents() {
     var self = this
     var extent = OLExtentUtils.createEmpty()
@@ -404,7 +454,7 @@ class MobilityMap extends LitElement {
   adjustMapContentsBasedOnZoom(zoom) {
     var self = this
 
-    self.routeStopsLayerGroup.setVisible(zoom >= 14)
+    self.routeStopsLayerGroup.setVisible(zoom >= configuration.zooms.stopsThreshold)
   }
 
   adjustMapContentsBasedOnEnabledRoutes() {
@@ -426,7 +476,7 @@ class MobilityMap extends LitElement {
   bootstrapData(callback) {
     var self = this
 
-    fetch(self.endpoint + '/v2/services/active')
+    fetch(self.endpointBaseUrl + '/v2/services/active')
       .then((servicesResponse) => servicesResponse.json())
       .then((services) => {
         self.services = services
@@ -434,19 +484,19 @@ class MobilityMap extends LitElement {
         var ids = services.map((service) => service.id)
 
         Promise.all(services.map((service) => {
-          return fetch(self.endpoint + '/v2/routes/service/' + service.id)
+          return fetch(self.endpointBaseUrl + '/v2/routes/service/' + service.id)
         })).then((routeResponses) => {
           return Promise.all(routeResponses.map((routeResponse) => routeResponse.json()))
         }).then((routes) => {
           return Promise.all(_.flatten(routes).filter((route) => {
-            if (!!self.lines) {
-              let regex = new RegExp(self.lines)
+            if (!!self.routesFilter) {
+              let regex = new RegExp(self.routesFilter)
               return regex.test(route.shortName) || regex.test(route.longName)
             }
 
             return true
           }).map((route) => {
-            return fetch(self.endpoint + '/v2/routes/' + route.id)
+            return fetch(self.endpointBaseUrl + '/v2/routes/' + route.id)
           }))
         }).then((routeResponses) => {
           return Promise.all(routeResponses.map((routeResponse) => routeResponse.json()))
@@ -470,37 +520,26 @@ class MobilityMap extends LitElement {
                 source: new OLVectorSource({
                   features: []
                 }),
-                style: new OLStyle({
-                  stroke: new OLStroke({
-                    color: route.color,
-                    width: 5
-                  })
-                }),
-                zIndex: 100
+                style: self.getPathStyle(route.color),
+                zIndex: configuration.layers.paths
               }),
               stops: new OLVectorLayer({
                 source: new OLVectorSource({
                   features: []
                 }),
-                style: new OLStyle({
-                  image: new OLCircleStyle({
-                    radius: 6,
-                    fill: new OLFill({color: '#ffffff'}),
-                    stroke: new OLStroke({color: '#000000', width: 2})
-                  })
-                }),
-                zIndex: 200
+                style: self.getStopStyle(),
+                zIndex: configuration.layers.stops
               }),
               realtime: new OLVectorLayer({
                 source: new OLVectorSource({
                   features: []
                 }),
-                zIndex: 300
+                zIndex: configuration.layers.vehicles
               })
             }
 
             Promise.all(route.services.map((routeService) => {
-              return fetch(self.endpoint + '/v2/routes/' + route.id + '/' + routeService.serviceId + '/' + routeService.variantId + '/geometry.geojson')
+              return fetch(self.endpointBaseUrl + '/v2/routes/' + route.id + '/' + routeService.serviceId + '/' + routeService.variantId + '/geometry.geojson')
             })).then((responses) => {
               return Promise.all(responses.map((response) => response.json())).then((geometries) => {
                 route.layers.paths.getSource().addFeatures(geometries.map((geometry) => {
@@ -548,7 +587,7 @@ class MobilityMap extends LitElement {
   updateVehiclePositions() {
     var self = this
 
-    fetch(self.endpoint + '/geojson/realtime')
+    fetch(self.endpointBaseUrl + '/geojson/realtime')
       .then((response) => response.json())
       .then((realtime) => {
         var processed = {}
@@ -561,8 +600,6 @@ class MobilityMap extends LitElement {
             var point = new OLPoint(OLProjectionFromLonLat(feature.geometry.coordinates))
 
             if (!_.has(self.vehicles, tripID)) {
-              var vehicleColor = '#' + (feature.properties.hexcolor || '000000')
-
               var vehicleFeature = new OLFeature({
                 properties: {
                   type: 'Vehicle',
@@ -571,12 +608,7 @@ class MobilityMap extends LitElement {
                 geometry: new OLPoint(OLProjectionFromLonLat(feature.geometry.coordinates))
               })
 
-              vehicleFeature.setStyle(new OLStyle({
-                image: new OLIcon({
-                  scale: 0.8,
-                  src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(assets__bus_icon.replace(/#000000/g, vehicleColor))
-                })
-              }))
+              vehicleFeature.setStyle(self.getVehicleStyle('#' + (feature.properties.hexcolor || '000000')))
 
               route.layers.realtime.getSource().addFeature(vehicleFeature)
 
@@ -620,7 +652,7 @@ class MobilityMap extends LitElement {
     let refreshDetails = (callback) => {
       var now = new Date()
 
-      fetch(self.endpoint + '/v2/stop-times/stop/' + stopID + '/after/' + moment().format('HH:mm:ss'))
+      fetch(self.endpointBaseUrl + '/v2/stop-times/stop/' + stopID + '/after/' + moment().format('HH:mm:ss'))
         .then((response) => response.json())
         .then((result) => {
           var stopTimes = _.sortBy(result, 'departureTime')
@@ -639,7 +671,7 @@ class MobilityMap extends LitElement {
             if (!!callback) callback()
           } else {
             Promise.all(stopTimes.map((stopTime) => {
-              return fetch(self.endpoint + '/v2/trips/' + stopTime.tripId)
+              return fetch(self.endpointBaseUrl + '/v2/trips/' + stopTime.tripId)
             }))
               .then((responses) => Promise.all(responses.map((response) => response.json())))
               .then((trips) => {
@@ -687,7 +719,7 @@ class MobilityMap extends LitElement {
         })
     }
 
-    fetch(self.endpoint + '/v2/stops/' + stopID)
+    fetch(self.endpointBaseUrl + '/v2/stops/' + stopID)
       .then((response) => response.json())
       .then((stop) => {
         var contents = []
@@ -716,7 +748,7 @@ class MobilityMap extends LitElement {
         self.dialogTitle.textContent = stop.name
         self.dialogContents.innerHTML = contents.join('')
 
-        var refreshInterval = setInterval(refreshDetails, 20000)
+        var refreshInterval = setInterval(refreshDetails, configuration.intervals.refreshStopDetails)
 
         self.dialogCloseCallback = () => {
           clearInterval(refreshInterval)
@@ -739,7 +771,7 @@ class MobilityMap extends LitElement {
     let refreshDetails = (callback) => {
       var now = moment().seconds(0).milliseconds(0)
 
-      fetch(self.endpoint + '/v2/trips/' + tripID)
+      fetch(self.endpointBaseUrl + '/v2/trips/' + tripID)
         .then((response) => response.json())
         .then((trip) => {
           var stops = trip.stops
@@ -801,7 +833,7 @@ class MobilityMap extends LitElement {
 
     var vehicle = self.vehicles[tripID]
 
-    fetch(self.endpoint + '/v2/routes/' + vehicle.routeID)
+    fetch(self.endpointBaseUrl + '/v2/routes/' + vehicle.routeID)
       .then((response) => response.json())
       .then((route) => {
         var contents = []
@@ -830,7 +862,7 @@ class MobilityMap extends LitElement {
         self.dialogTitle.textContent = route.shortName
         self.dialogContents.innerHTML = contents.join('')
 
-        var refreshInterval = setInterval(refreshDetails, 5000)
+        var refreshInterval = setInterval(refreshDetails, configuration.intervals.refreshVehicleDetails)
 
         self.dialogCloseCallback = () => {
           clearInterval(refreshInterval)
@@ -849,7 +881,7 @@ class MobilityMap extends LitElement {
       self.map.getView().animate({
         duration: 250,
         center: self.stops[stopID].point.getCoordinates(),
-        zoom: 16
+        zoom: configuration.zooms.highlightFeature
       })
     }
   }
@@ -861,7 +893,7 @@ class MobilityMap extends LitElement {
       self.map.getView().animate({
         duration: 250,
         center: self.vehicles[tripID].point.getCoordinates(),
-        zoom: 16
+        zoom: configuration.zooms.highlightFeature
       })
     }
   }
@@ -889,7 +921,7 @@ class MobilityMap extends LitElement {
       standard: new OLTileLayer({
         source: new OLOSM(),
         visible: true,
-        zIndex: 0
+        zIndex: configuration.layers.backdrops
       }),
       satellite: new OLTileLayer({
         source: new OLXYZ({
@@ -899,7 +931,7 @@ class MobilityMap extends LitElement {
           maxZoom: 23
         }),
         visible: false,
-        zIndex: 0
+        zIndex: configuration.layers.backdrops
       })
     }
 
@@ -921,7 +953,7 @@ class MobilityMap extends LitElement {
       source: new OLVectorSource({
         features: []
       }),
-      zIndex: 500
+      zIndex: configuration.layers.currentPosition
     })
 
     self.contentsLayerGroup = new OLLayerGroup({
@@ -962,20 +994,14 @@ class MobilityMap extends LitElement {
           geometry: new OLPoint(position)
         })
 
-        self.currentPositionFeature.setStyle(new OLStyle({
-          image: new OLCircleStyle({
-            radius: 8,
-            fill: new OLFill({color: '#0077ff'}),
-            stroke: new OLStroke({color: '#ffffff', width: 2})
-          })
-        }))
+        self.currentPositionFeature.setStyle(self.getCurrentPositionStyle())
 
         self.currentPositionLayer.getSource().addFeature(self.currentPositionFeature)
 
         self.map.getView().animate({
           duration: 250,
           center: position,
-          zoom: 16
+          zoom: configuration.zooms.revealCurrentPosition
         })
       } else {
         self.currentPositionFeature.getGeometry().setCoordinates(position)
@@ -988,24 +1014,11 @@ class MobilityMap extends LitElement {
         var config = feature.getProperties()
 
         if (config.properties.type === 'Stop') {
-          return new OLStyle({
-            image: new OLCircleStyle({
-              radius: 6,
-              fill: new OLFill({color: '#ffffff'}),
-              stroke: new OLStroke({color: '#000000', width: 2})
-            })
-          })
+          return self.getStopStyle()
         }
 
         if (config.properties.type === 'Vehicle') {
-          var vehicleColor = (self.routes[config.properties.routeID].color || '#000000')
-
-          return new OLStyle({
-            image: new OLIcon({
-              scale: 0.8,
-              src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(assets__bus_icon.replace(/#000000/g, vehicleColor))
-            })
-          })
+          return self.getVehicleStyle(self.routes[config.properties.routeID].color || '#000000')
         }
 
         return null
@@ -1220,7 +1233,7 @@ class MobilityMap extends LitElement {
 
       setInterval(() => {
         self.updateVehiclePositions()
-      }, 2000)
+      }, configuration.intervals.refreshVehicles)
     })
 
     var zoom = self.map.getView().getZoom()
@@ -1235,4 +1248,6 @@ class MobilityMap extends LitElement {
   }
 }
 
-customElements.define('mobility-map', MobilityMap);
+if (!customElements.get('smart-mobility')) {
+  customElements.define('smart-mobility', SmartMobilityMap);
+}
