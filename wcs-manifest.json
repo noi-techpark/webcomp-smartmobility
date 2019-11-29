@@ -1,0 +1,27 @@
+{
+  "title": "Smart Mobility",
+  "description": "Webcomponents meant for displaying different mobility layers which currently are also shown on http://mobility.meran.eu",
+  "descriptionAbstract": "Smart Mobility Web Component",
+  "license": "AGPL-3.0",
+  "repositoryUrl": "https://github.com/noi-techpark/webcomp-smartmobility",
+  "authors": [
+    {
+      "name": "Daniel Rampanelli",
+      "email": "hello@danielrampanelli.com",
+      "organization": "Daniel Rampanelli",
+      "organizationUrl": "https://danielrampanelli.com/"
+    }
+  ],
+  "image": "wcs-logo.png",
+  "searchTags": ["mobility"],
+  "dist": {
+    "basePath": "dist",
+    "files": [
+      "smartmobility.min.js"
+    ]
+  },
+  "configuration": {
+    "tagName": "smart-mobility",
+    "options": []
+  }
+}
