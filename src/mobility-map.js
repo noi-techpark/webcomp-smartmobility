@@ -539,7 +539,7 @@ class SmartMobilityMap extends LitElement {
             }
 
             Promise.all(route.services.map((routeService) => {
-              return fetch(self.endpointBaseUrl + '/v2/routes/' + route.id + '/' + routeService.serviceId + '/' + routeService.variantId + '/geometry.geojson')
+              return fetch(self.endpointBaseUrl + '/v2/variants/' + routeService.id + '.geojson')
             })).then((responses) => {
               return Promise.all(responses.map((response) => response.json())).then((geometries) => {
                 route.layers.paths.getSource().addFeatures(geometries.map((geometry) => {
@@ -859,7 +859,7 @@ class SmartMobilityMap extends LitElement {
         contents.push('</div>')
 
         self.dialogIcon.innerHTML = assets__bus_icon.replace(/#000000/g, route.color)
-        self.dialogTitle.textContent = route.shortName
+        self.dialogTitle.textContent = route.longName
         self.dialogContents.innerHTML = contents.join('')
 
         var refreshInterval = setInterval(refreshDetails, configuration.intervals.refreshVehicleDetails)
@@ -1149,6 +1149,7 @@ class SmartMobilityMap extends LitElement {
 
       contents += '</div>'
 
+      self.dialogIcon.innerHTML = assets__settings_icon
       self.dialogTitle.textContent = 'SETTINGS'
       self.dialogContents.innerHTML = contents
 
