@@ -1,0 +1,11 @@
+version: "3"
+services:
+  app:
+    image: node:12
+    volumes:
+      - ./:/code
+    working_dir: /code
+    command: yarn watch
+    ports:
+      - "8999:8080"
+    tty: true
