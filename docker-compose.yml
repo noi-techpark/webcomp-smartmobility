@@ -5,7 +5,13 @@ services:
     volumes:
       - ./:/code
     working_dir: /code
-    command: yarn watch
+    command: sh -c "test -d node_modules || yarn; yarn watch"
+  serve:
+    image: python:3.6-alpine
+    volumes:
+      - ./:/code
+    working_dir: /code/src
+    command: python -m http.server
     ports:
-      - "8999:8080"
+      - "8999:8000"
     tty: true
