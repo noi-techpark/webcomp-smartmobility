@@ -443,12 +443,14 @@ class SmartMobilityMap extends LitElement {
 
     self.buildExtent(extent, self.contentsLayerGroup.getLayers())
 
-    self.map.getView().fit(extent, {
-      duration: 250,
-      maxZoom: 16,
-      padding: [32, 32, 32, 32],
-      size: self.map.getSize()
-    })
+    if (!OLExtentUtils.isEmpty(extent)) {
+      self.map.getView().fit(extent, {
+        duration: 250,
+        maxZoom: 16,
+        padding: [32, 32, 32, 32],
+        size: self.map.getSize()
+      })
+    }
   }
 
   adjustMapContentsBasedOnZoom(zoom) {
@@ -538,8 +540,10 @@ class SmartMobilityMap extends LitElement {
               })
             }
 
-            Promise.all(route.services.map((routeService) => {
-              return fetch(self.endpointBaseUrl + '/v2/variants/' + routeService.id + '.geojson')
+            Promise.all(route.services.filter((routeService) => {
+                return !!routeService.geometry
+            }).map((routeService) => {
+              return fetch(self.endpointBaseUrl + routeService.geometry.geojson)
             })).then((responses) => {
               return Promise.all(responses.map((response) => response.json())).then((geometries) => {
                 route.layers.paths.getSource().addFeatures(geometries.map((geometry) => {
@@ -574,8 +578,8 @@ class SmartMobilityMap extends LitElement {
               })
             })
 
-            self.routePathsLayerGroup.getLayers().push(route.layers.paths)
-            self.routeStopsLayerGroup.getLayers().push(route.layers.stops)
+            // self.routePathsLayerGroup.getLayers().push(route.layers.paths)
+            // self.routeStopsLayerGroup.getLayers().push(route.layers.stops)
             self.routeVehiclesLayerGroup.getLayers().push(route.layers.realtime)
           })
 
@@ -584,56 +588,113 @@ class SmartMobilityMap extends LitElement {
       })
   }
 
-  updateVehiclePositions() {
+  setupData() {
+    let self = this
+
+    if (window.WebSocket) {
+      self.setupSocketDataStream()
+    } else {
+      self.setupPollingDataStream()
+    }
+  }
+
+  setupSocketDataStream() {
+    let self = this
+
+    let ws = new WebSocket((self.endpointBaseUrl + '/geojson/realtime/stream')
+      .replace('http://', 'ws://')
+      .replace('https://', 'wss://'))
+
+    ws.onmessage = (evt) => {
+      self.updatePositions(JSON.parse(evt.data))
+    }
+
+    ws.onerror = (error) => {
+      self.setupPollingDataStream()
+      ws.close()
+    }
+
+    ws.onclose = () => {
+      self.setupPollingDataStream()
+    }
+
+    self.fetchPositions((positions) => {
+      self.updatePositions(positions)
+    })
+  }
+
+  setupPollingDataStream() {
+    var self = this
+
+    let timeout = configuration.intervals.refreshVehicles
+
+    let fetchAndUpdatePositions = () => {
+      self.fetchPositions((positions) => {
+        self.updatePositions(positions)
+        setTimeout(fetchAndUpdatePositions, timeout)
+      })
+    }
+
+    fetchAndUpdatePositions()
+    setTimeout(fetchAndUpdatePositions, timeout)
+  }
+
+  fetchPositions(callback) {
     var self = this
 
     fetch(self.endpointBaseUrl + '/geojson/realtime')
       .then((response) => response.json())
       .then((realtime) => {
-        var processed = {}
-
-        realtime.features.forEach((feature) => {
-          if (!!self.routes[feature.properties.li_nr]) {
-            var route = self.routes[feature.properties.li_nr]
-            var tripID = feature.properties.frt_fid
-
-            var point = new OLPoint(OLProjectionFromLonLat(feature.geometry.coordinates))
-
-            if (!_.has(self.vehicles, tripID)) {
-              var vehicleFeature = new OLFeature({
-                properties: {
-                  type: 'Vehicle',
-                  id: feature.properties.frt_fid
-                },
-                geometry: new OLPoint(OLProjectionFromLonLat(feature.geometry.coordinates))
-              })
-
-              vehicleFeature.setStyle(self.getVehicleStyle('#' + (feature.properties.hexcolor || '000000')))
-
-              route.layers.realtime.getSource().addFeature(vehicleFeature)
-
-              self.vehicles[tripID] = {
-                routeID: route.id,
-                point: point,
-                source: route.layers.realtime.getSource(),
-                feature: vehicleFeature
-              }
-            } else {
-              self.vehicles[tripID].point = point
-              self.vehicles[tripID].feature.setGeometry(point)
-            }
-
-            processed[tripID] = true
-          }
-        })
-
-        _.each(self.vehicles, (vehicle, tripID) => {
-          if (!_.has(processed, tripID)) {
-            self.vehicles[tripID].source.removeFeature(self.vehicles[tripID].feature)
-            delete self.vehicles[tripID]
-          }
-        })
+        callback(realtime)
       })
+  }
+
+  updatePositions(positions) {
+    var self = this
+
+    var processed = {}
+
+    positions.features.forEach((feature) => {
+      if (!!self.routes[feature.properties.li_nr]) {
+        var route = self.routes[feature.properties.li_nr]
+        var tripID = feature.properties.frt_fid
+
+        var point = new OLPoint(OLProjectionFromLonLat(feature.geometry.coordinates))
+
+        if (!_.has(self.vehicles, tripID)) {
+          var vehicleFeature = new OLFeature({
+            properties: {
+              type: 'Vehicle',
+              id: feature.properties.frt_fid
+            },
+            geometry: new OLPoint(OLProjectionFromLonLat(feature.geometry.coordinates))
+          })
+
+          vehicleFeature.setStyle(self.getVehicleStyle('#' + (feature.properties.hexcolor || '000000')))
+
+          route.layers.realtime.getSource().addFeature(vehicleFeature)
+
+          self.vehicles[tripID] = {
+            routeID: route.id,
+            point: point,
+            source: route.layers.realtime.getSource(),
+            feature: vehicleFeature
+          }
+        } else {
+          self.vehicles[tripID].point = point
+          self.vehicles[tripID].feature.setGeometry(point)
+        }
+
+        processed[tripID] = true
+      }
+    })
+
+    _.each(self.vehicles, (vehicle, tripID) => {
+      if (!_.has(processed, tripID)) {
+        self.vehicles[tripID].source.removeFeature(self.vehicles[tripID].feature)
+        delete self.vehicles[tripID]
+      }
+    })
   }
 
   formatTime(formattedTime) {
@@ -819,7 +880,7 @@ class SmartMobilityMap extends LitElement {
               let link = stopLinks[i]
 
               link.onclick = (e) => {
-                self.highlightStop(link.getAttribute('data-stop'))
+                // self.highlightStop(link.getAttribute('data-stop'))
                 return false
               }
             }
@@ -1134,18 +1195,48 @@ class SmartMobilityMap extends LitElement {
       contents += '<a id="unselect-all-routes" href="#">Select none</a>'
       contents += '</div>'
 
-      contents += '<div class="contains-route-checkboxes">'
+      var routesWithoutArea = []
+      var routesByArea = {}
 
-      _.each(_.sortBy(_.values(self.routes), (route) => _.padStart(route.shortName, 4, '0')), (route) => {
-        contents += '<div class="contains-route-checkbox">' +
-          '<div class="wrapper" style="background-color: ' + route.color + ';">' +
-            '<span>' + route.shortName + '</span>' +
-            '<paper-checkbox data-route="' + route.id + '" ' + (_.has(self.enabledRoutes, route.id) ? 'checked' : '') + ' style="--paper-checkbox-checkmark-color: ' + route.color + ';"></paper-checkbox>' +
-          '</div>' +
-        '</div>'
+      _.each(_.values(self.routes), (route) => {
+        if (!!route.areaName) {
+          if (!_.has(routesByArea, route.areaName)) {
+            routesByArea[route.areaName] = []
+          }
+
+          routesByArea[route.areaName].push(route)
+        } else {
+          routesWithoutArea.push(route)
+        }
       })
 
-      contents += '</div>'
+      let renderRouteFilters = (routes) => {
+        contents += '<div class="contains-route-checkboxes">'
+
+        _.each(_.sortBy(routes, (route) => _.padStart(route.shortName, 4, '0')), (route) => {
+          contents += '<div class="contains-route-checkbox">' +
+            '<div class="wrapper" style="background-color: ' + route.color + ';">' +
+              '<span>' + route.shortName + '</span>' +
+              '<paper-checkbox data-route="' + route.id + '" ' + (_.has(self.enabledRoutes, route.id) ? 'checked' : '') + ' style="--paper-checkbox-checkmark-color: ' + route.color + ';"></paper-checkbox>' +
+            '</div>' +
+          '</div>'
+        })
+
+        contents += '</div>'
+      }
+
+      _.each(_.sortBy(_.keys(routesByArea)), (areaName) => {
+        contents += '<h3>' + areaName + '</h3>'
+        renderRouteFilters(routesByArea[areaName])
+      })
+
+      if (routesWithoutArea.length !== 0) {
+        if (_.keys(routesByArea).length !== 0) {
+          contents += '<h3>Other</h3>'
+        }
+
+        renderRouteFilters(routesWithoutArea)
+      }
 
       contents += '</div>'
 
@@ -1230,11 +1321,7 @@ class SmartMobilityMap extends LitElement {
 
       self.fitMapToContents()
 
-      self.updateVehiclePositions()
-
-      setInterval(() => {
-        self.updateVehiclePositions()
-      }, configuration.intervals.refreshVehicles)
+      self.setupData()
     })
 
     var zoom = self.map.getView().getZoom()
