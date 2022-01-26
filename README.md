@@ -3,6 +3,8 @@ Webcomponent - Smart Mobility
 
 Webcomponents meant for displaying different mobility layers which currently are also shown on  http://mobility.meran.eu
 
+[![CI](https://github.com/noi-techpark/webcomp-smartmobility/actions/workflows/ci.yml/badge.svg)](https://github.com/noi-techpark/webcomp-smartmobility/actions/workflows/ci.yml)
+
 ## Quickstart
 
 You can download the packaged/build components and include them in your website or link the resources directly by means of a CDN (e.g. [jsDelivr](https://www.jsdelivr.com/?docs=gh)) service.
