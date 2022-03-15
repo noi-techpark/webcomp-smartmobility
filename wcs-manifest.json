@@ -3,6 +3,7 @@
   "description": "Webcomponents meant for displaying different mobility layers which currently are also shown on http://mobility.meran.eu",
   "descriptionAbstract": "Smart Mobility Web Component",
   "license": "AGPL-3.0-or-later",
+  "repositoryUrl": "https://github.com/noi-techpark/webcomp-smartmobility.git",
   "authors": [
     {
       "name": "Daniel Rampanelli",
