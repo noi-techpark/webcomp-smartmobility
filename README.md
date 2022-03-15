@@ -41,22 +41,21 @@ All relevant files can be found in the `src` folder.
 
 * Node
 * NPM
-* Yarn
 
 ### Setup
 
-Download and install all necessary dependencies. Requires the `yarn` command/tool installed at the system level.
+Download and install all necessary dependencies. Requires the `npm` command/tool installed at the system level.
 
-    yarn
+    npm install
 
 ### Build
 
 Build a minified file/asset in the `dist` folder.
 
-    yarn build
+    npm run build
 
 ### Developing
 
 Starts watching the source files and recompiles them if necessary. Provides website at `http://0.0.0.0:8080` that reloads itself automatically.
 
-    yarn watch
+    npm run watch
