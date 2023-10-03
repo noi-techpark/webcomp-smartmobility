@@ -34,6 +34,9 @@ jobs:
           build-command: npm run build
           node-version: ${{env.NODE_VERSION}}
 
+      - name: replace google fonts with fonts.testingmachine.eu
+        run: sed -i 's;https://fonts.googleapis.com/css?family=Roboto+Mono:400,700|Roboto:400,300,300italic,400italic,500,500italic,700,700italic;https://fonts.testingmachine.eu/roboto/style.css;g' dist/smartmobility.min.js
+
       - uses: noi-techpark/github-actions/webcomp-push@v2
         with:
           keycloak-secret: ${{secrets.WCSTORE_CLI_KEYCLOAK_SECRET_TEST}}
@@ -51,6 +54,9 @@ jobs:
         with:
           build-command: npm run build
           node-version: ${{env.NODE_VERSION}}
+
+      - name: replace google fonts with fonts.testingmachine.eu
+        run: sed -i 's;https://fonts.googleapis.com/css?family=Roboto+Mono:400,700|Roboto:400,300,300italic,400italic,500,500italic,700,700italic;https://fonts.testingmachine.eu/roboto/style.css;g' dist/smartmobility.min.js
 
       - uses: noi-techpark/github-actions/webcomp-push@v2
         with:
