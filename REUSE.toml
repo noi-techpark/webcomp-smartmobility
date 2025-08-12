@@ -1,0 +1,16 @@
+version = 1
+SPDX-PackageName = "webcomp-smartmobility"
+SPDX-PackageSupplier = "(c) 2021 Peter Moser <p.moser@noi.bz.it>"
+SPDX-PackageDownloadLocation = "https://github.com/noi-techpark/webcomp-smartmobility"
+
+[[annotations]]
+path = ["src/**", "odh-**.js"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "(c) 2021 NOI Techpark <info@noi.bz.it>"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+[[annotations]]
+path = ["infrastructure/**", ".editorconfig", ".gitignore", "**.md", "**.txt", ".env.**", "**.yml", "**.json", "yarn.lock", "webpack.**", "wcs-logo.png"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "(c) 2021 NOI Techpark <info@noi.bz.it>"
+SPDX-License-Identifier = "CC0-1.0"
