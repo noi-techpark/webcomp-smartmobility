@@ -1,3 +1,5 @@
+[![REUSE Compliance](https://github.com/noi-techpark/webcomp-smartmobility/actions/workflows/reuse-lint.yml/badge.svg)](https://github.com/noi-techpark/opendatahub-docs/wiki/REUSE#badges)
+
 Webcomponent - Smart Mobility
 ============================
 
